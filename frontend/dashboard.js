@@ -24,6 +24,30 @@ async function checkUserAuthentication() {
 }
 checkUserAuthentication();
 
+async function loadNotes() {
+  try {
+    const res = await fetch("http://127.0.0.1:3000/api/notes", {
+      credentials: "include",
+    });
+
+    console.log("Status:", res.status);
+
+    const data = await res.json();
+    
+
+    notes = data;
+
+    renderEverything();
+
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+loadNotes();
+
+
+
 const menuBtn = document.getElementById("menuBtn");
 const sidebar = document.getElementById("sidebar");
 const overlay = document.getElementById("overlay");
@@ -78,7 +102,8 @@ let selectedColor = "#fffaf4";
 let editingNoteId = null;
 let activeModalNoteId = null;
 
-let notes = JSON.parse(localStorage.getItem("inkspireNotes")) || [];
+let notes = [];
+
 let tasks = JSON.parse(localStorage.getItem("inkspireTasks")) || [];
 
 function cleanCategory(category) {
@@ -104,26 +129,9 @@ function formatDate() {
   return new Date().toLocaleDateString("en-IN");
 }
 
-function saveNotes() {
-  localStorage.setItem("inkspireNotes", JSON.stringify(notes));
-}
-
 function saveTasks() {
   localStorage.setItem("inkspireTasks", JSON.stringify(tasks));
 }
-
-notes = notes.map(function (note) {
-  return {
-    id: note.id || Date.now() + Math.random(),
-    title: note.title || "Untitled Note",
-    content: note.content || "",
-    category: cleanCategory(note.category),
-    color: note.color || "#fffaf4",
-    favorite: note.favorite || false,
-    pinned: note.pinned || false,
-    date: note.date || formatDate(),
-  };
-});
 
 tasks = tasks.map(function (task) {
   return {
@@ -134,7 +142,6 @@ tasks = tasks.map(function (task) {
   };
 });
 
-saveNotes();
 saveTasks();
 
 /* SIDEBAR */
@@ -166,16 +173,14 @@ pinMenuBtn.addEventListener("click", function () {
   pinNotesMenu.classList.toggle("show-menu-list");
 });
 
-logoutBtn.addEventListener("click",async function  () {
+logoutBtn.addEventListener("click", async function () {
   if (confirm("Logout from Inkspire?")) {
     const res = await fetch("http://127.0.0.1:3000/api/auth/logout", {
       method: "POST",
       credentials: "include",
-    })
+    });
     const data = await res.json();
-    alert(
-        data.message
-    )
+    alert(data.message);
     window.location.replace("index.html");
   }
 });
@@ -295,7 +300,7 @@ function renderSearchSuggestions() {
     suggestion.addEventListener("click", function () {
       searchSuggestions.style.display = "none";
       searchInput.value = "";
-      openNoteModal(note.id);
+      openNoteModal(note._id);
     });
 
     searchSuggestions.appendChild(suggestion);
@@ -306,7 +311,7 @@ function renderSearchSuggestions() {
 
 /* NOTES */
 
-saveNoteBtn.addEventListener("click", function () {
+saveNoteBtn.addEventListener("click", async function () {
   const titleText = noteTitle.value.trim();
   const contentText = noteInput.value.trim();
 
@@ -315,31 +320,47 @@ saveNoteBtn.addEventListener("click", function () {
   }
 
   if (editingNoteId !== null) {
-    const note = notes.find(function (item) {
-      return item.id === editingNoteId;
+    await fetch(`http://127.0.0.1:3000/api/notes/${editingNoteId}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: titleText === "" ? "Untitled Note" : titleText,
+        content: contentText,
+        category: cleanCategory(categoryFilter.value),
+        color: selectedColor,
+      }),
     });
-
-    if (note) {
-      note.title = titleText;
-      note.content = contentText;
-      note.category = cleanCategory(categoryFilter.value);
-      note.color = selectedColor;
-      note.date = formatDate();
-    }
 
     editingNoteId = null;
     saveNoteBtn.innerText = "save";
+
+    await loadNotes();
   } else {
-    notes.unshift({
-      id: Date.now(),
-      title: titleText === "" ? "Untitled Note" : titleText,
-      content: contentText,
-      category: cleanCategory(categoryFilter.value),
-      color: selectedColor,
-      favorite: false,
-      pinned: false,
-      date: formatDate(),
+    const res = await fetch("http://127.0.0.1:3000/api/notes", {
+      method: "POST",
+
+      credentials: "include",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        title: titleText === "" ? "Untitled Note" : titleText,
+        content: contentText,
+        category: cleanCategory(categoryFilter.value),
+        color: selectedColor,
+      }),
     });
+
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.message);
+      return;
+    }
   }
 
   noteTitle.value = "";
@@ -351,10 +372,10 @@ saveNoteBtn.addEventListener("click", function () {
     btn.classList.remove("active");
   });
 
-  saveNotes();
-  renderEverything();
+  await loadNotes();
 });
 function renderSidebarLists() {
+  
   allNotesMenu.innerHTML = "";
   favNotesMenu.innerHTML = "";
   pinNotesMenu.innerHTML = "";
@@ -398,7 +419,7 @@ function renderMenuList(container, noteList, emptyText) {
 
     item.addEventListener("click", function () {
       closeSidebar();
-      openNoteModal(note.id);
+      openNoteModal(note._id);
     });
 
     container.appendChild(item);
@@ -409,16 +430,16 @@ function renderMenuList(container, noteList, emptyText) {
 
 function openNoteModal(noteId) {
   const note = notes.find(function (item) {
-    return item.id === noteId;
+    return item._id === noteId;
   });
 
   if (!note) return;
 
-  activeModalNoteId = note.id;
+  activeModalNoteId = note._id;
 
   modalHeartBtn.innerText = note.favorite ? "❤️" : "🤍";
   modalTitle.innerText = note.title;
-  modalDate.innerText = note.date;
+  modalDate.innerText = new Date(note.createdAt).toLocaleDateString("en-IN");
   modalCategory.innerText =
     getCategoryEmoji(cleanCategory(note.category)) +
     " " +
@@ -445,43 +466,68 @@ closeModalBtn.addEventListener("click", function () {
   closeModal();
 });
 
-modalHeartBtn.addEventListener("click", function () {
+modalHeartBtn.addEventListener("click", async function () {
   if (activeModalNoteId === null) return;
 
   const note = notes.find(function (item) {
-    return item.id === activeModalNoteId;
+    return item._id === activeModalNoteId;
   });
 
   if (!note) return;
 
-  note.favorite = !note.favorite;
+  await fetch(
+    `http://127.0.0.1:3000/api/notes/${note._id}`,
 
-  saveNotes();
-  renderEverything();
-  openNoteModal(note.id);
+    {
+      method: "PUT",
+
+      credentials: "include",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        favorite: !note.favorite,
+      }),
+    },
+  );
+
+  await loadNotes();
+
+  openNoteModal(note._id);
 });
 
-modalPinBtn.addEventListener("click", function () {
+modalPinBtn.addEventListener("click", async function () {
   if (activeModalNoteId === null) return;
 
   const note = notes.find(function (item) {
-    return item.id === activeModalNoteId;
+    return item._id === activeModalNoteId;
   });
 
   if (!note) return;
 
-  note.pinned = !note.pinned;
+  await fetch(`http://127.0.0.1:3000/api/notes/${note._id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      pinned: !note.pinned,
+    }),
+  });
 
-  saveNotes();
-  renderEverything();
-  openNoteModal(note.id);
+  await loadNotes();
+
+  openNoteModal(note._id);
 });
 
 modalEditBtn.addEventListener("click", function () {
   if (activeModalNoteId === null) return;
 
   const note = notes.find(function (item) {
-    return item.id === activeModalNoteId;
+    return item._id === activeModalNoteId;
   });
 
   if (!note) return;
@@ -490,7 +536,7 @@ modalEditBtn.addEventListener("click", function () {
   noteInput.value = note.content;
   categoryFilter.value = cleanCategory(note.category);
   selectedColor = note.color;
-  editingNoteId = note.id;
+  editingNoteId = note._id;
   saveNoteBtn.innerText = "update";
 
   colorButtons.forEach(function (btn) {
@@ -509,18 +555,24 @@ modalEditBtn.addEventListener("click", function () {
   });
 });
 
-modalDeleteBtn.addEventListener("click", function () {
+modalDeleteBtn.addEventListener("click", async function () {
   if (activeModalNoteId === null) return;
 
   if (!confirm("Delete this note?")) return;
 
-  notes = notes.filter(function (note) {
-    return note.id !== activeModalNoteId;
-  });
+  await fetch(
+    `http://127.0.0.1:3000/api/notes/${activeModalNoteId}`,
 
-  saveNotes();
+    {
+      method: "DELETE",
+
+      credentials: "include",
+    },
+  );
+
+  await loadNotes();
   closeModal();
-  renderEverything();
+
 });
 
 /* TASKS */
@@ -593,7 +645,7 @@ function renderTasks() {
       taskTime.value = task.reminder;
 
       tasks = tasks.filter(function (item) {
-        return item.id !== task.id;
+        return item._id !== task.id;
       });
 
       saveTasks();
@@ -602,7 +654,7 @@ function renderTasks() {
 
     deleteBtn.addEventListener("click", function () {
       tasks = tasks.filter(function (item) {
-        return item.id !== task.id;
+        return item._id !== task.id;
       });
 
       saveTasks();

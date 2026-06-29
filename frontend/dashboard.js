@@ -24,6 +24,8 @@ async function checkUserAuthentication() {
 }
 checkUserAuthentication();
 
+
+
 async function loadNotes() {
   try {
     const res = await fetch("http://127.0.0.1:3000/api/notes", {
@@ -33,7 +35,7 @@ async function loadNotes() {
     console.log("Status:", res.status);
 
     const data = await res.json();
-    
+
 
     notes = data;
 
@@ -46,6 +48,26 @@ async function loadNotes() {
 
 loadNotes();
 
+
+async function loadTasks() {
+
+  try {
+
+    const res = await fetch("http://127.0.0.1:3000/api/tasks", {
+      credentials: "include"
+    });
+
+    tasks = await res.json();
+
+    renderEverything();
+
+  } catch (err) {
+    console.log(err);
+  }
+
+}
+
+loadTasks();
 
 
 const menuBtn = document.getElementById("menuBtn");
@@ -100,11 +122,13 @@ const modalDeleteBtn = document.getElementById("modalDeleteBtn");
 
 let selectedColor = "#fffaf4";
 let editingNoteId = null;
+let editingTaskId = null;
 let activeModalNoteId = null;
 
 let notes = [];
+let tasks = [];
 
-let tasks = JSON.parse(localStorage.getItem("inkspireTasks")) || [];
+
 
 function cleanCategory(category) {
   if (!category) return "Study";
@@ -129,20 +153,10 @@ function formatDate() {
   return new Date().toLocaleDateString("en-IN");
 }
 
-function saveTasks() {
-  localStorage.setItem("inkspireTasks", JSON.stringify(tasks));
-}
 
-tasks = tasks.map(function (task) {
-  return {
-    id: task.id || Date.now() + Math.random(),
-    text: task.text || "",
-    reminder: task.reminder || "",
-    completed: task.completed || false,
-  };
-});
 
-saveTasks();
+
+
 
 /* SIDEBAR */
 
@@ -375,7 +389,7 @@ saveNoteBtn.addEventListener("click", async function () {
   await loadNotes();
 });
 function renderSidebarLists() {
-  
+
   allNotesMenu.innerHTML = "";
   favNotesMenu.innerHTML = "";
   pinNotesMenu.innerHTML = "";
@@ -577,25 +591,52 @@ modalDeleteBtn.addEventListener("click", async function () {
 
 /* TASKS */
 
-addTaskBtn.addEventListener("click", function () {
+addTaskBtn.addEventListener("click", async function () {
+
   const taskText = taskInput.value.trim();
 
-  if (taskText === "") {
-    return;
-  }
+  if (taskText === "") return;
 
-  tasks.unshift({
-    id: Date.now(),
-    text: taskText,
-    reminder: taskTime.value,
-    completed: false,
-  });
+  if (editingTaskId) {
+
+    // UPDATE EXISTING TASK
+    await fetch(`http://127.0.0.1:3000/api/tasks/${editingTaskId}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: taskText,
+        reminder: taskTime.value
+      })
+    });
+
+    editingTaskId = null;
+    addTaskBtn.innerText = "Add Task";
+
+  } else {
+
+    // CREATE NEW TASK
+    await fetch("http://127.0.0.1:3000/api/tasks", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: taskText,
+        reminder: taskTime.value
+      })
+    });
+
+  }
 
   taskInput.value = "";
   taskTime.value = "";
 
-  saveTasks();
-  renderEverything();
+  await loadTasks();
+
 });
 
 function renderTasks() {
@@ -634,31 +675,42 @@ function renderTasks() {
     const deleteBtn = document.createElement("button");
     deleteBtn.innerText = "Delete";
 
-    checkbox.addEventListener("change", function () {
-      task.completed = checkbox.checked;
-      saveTasks();
-      renderEverything();
+    checkbox.addEventListener("change", async function () {
+      await fetch(`http://127.0.0.1:3000/api/tasks/${task._id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          completed: checkbox.checked
+        })
+      });
+
+      await loadTasks();
     });
 
     editBtn.addEventListener("click", function () {
+
       taskInput.value = task.text;
-      taskTime.value = task.reminder;
+      taskTime.value = task.reminder
+        ? new Date(task.reminder).toISOString().slice(0, 16)
+        : "";
 
-      tasks = tasks.filter(function (item) {
-        return item._id !== task.id;
-      });
+      editingTaskId = task._id;
 
-      saveTasks();
-      renderEverything();
+      addTaskBtn.innerText = "Update Task";
     });
 
-    deleteBtn.addEventListener("click", function () {
-      tasks = tasks.filter(function (item) {
-        return item._id !== task.id;
+    deleteBtn.addEventListener("click", async function () {
+
+      await fetch(`http://127.0.0.1:3000/api/tasks/${task._id}`, {
+        method: "DELETE",
+        credentials: "include"
       });
 
-      saveTasks();
-      renderEverything();
+      await loadTasks();
+
     });
 
     taskDiv.appendChild(checkbox);
@@ -674,10 +726,9 @@ function renderTasks() {
 }
 
 function formatReminder(dateTimeValue) {
-  if (dateTimeValue === "") {
+  if (!dateTimeValue) {
     return "No reminder";
   }
-
   const date = new Date(dateTimeValue);
 
   return date.toLocaleString("en-IN", {

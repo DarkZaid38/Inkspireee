@@ -25,6 +25,7 @@ window.addEventListener("pageshow", (event) => {
         location.reload();
     }
 });
+    
 
 function animateAndRedirect() {
     card.style.transition = "all 0.5s ease";
@@ -71,6 +72,7 @@ loginBtn.addEventListener("click", async (e) => {
     }
 
 });
+
 
 signupBtn.addEventListener("click", async (e) => {
     e.preventDefault();

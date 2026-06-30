@@ -189,7 +189,7 @@ pinMenuBtn.addEventListener("click", function () {
 
 logoutBtn.addEventListener("click", async function () {
   if (confirm("Logout from Inkspire?")) {
-    const res = await fetch(`${API_URL}api/auth/logout`, {
+    const res = await fetch(`${API_URL}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
